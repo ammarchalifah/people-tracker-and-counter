@@ -17,39 +17,45 @@ from matplotlib import pyplot as plt
 from PIL import Image
 from functions import label_map_util
 from functions import visualization_utils as vis_util
+from functions.tracker import box_to_centoroid
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('-m', '--model', default = 'ssd_inception_v2', help = 'Model name to be used. Choose between [ssd inception, ssd mobilenet, faster rcnn resnet]')
-parser.add_argument('-i', '--input_path', default = 'videos/lobbybarat.avi', help ='path of file')
+parser.add_argument('-m', '--model', default = 'ssd mobilenet', help = 'Model name to be used. Choose between [ssd inception, ssd mobilenet, faster rcnn resnet]')
+parser.add_argument('-i', '--input_path', default = 'videos/lobbyselatan.avi', help ='path of file')
 parser.add_argument('-s', '--save_bool', default = False, help = 'log detection data to a csv file.')
 
 args = parser.parse_args()
 
+#------------VIDEO STREAM--------------
 # Define the video stream
 cap = cv2.VideoCapture(args.input_path)  # Change only if you have more than one webcams
+#Target size
+target_w = 800
+target_h = 600
 
-#Import JSON and determine model name
+#Initialize empty dataframe to record results
+#------------LOGGING VARIABLE----------------
+res_df = pd.DataFrame(columns=['boxes', 'classes','scores','num_detections'])
+
+#Model choosing
+#------------DETECTION MODEL-----------------
 modelname = {
     'ssd mobilenet':'ssd_mobilenet_v1_ppn_2018_07_03',
     'ssd inception':'ssd_inception_v2_coco_2017_11_17',
     'faster rcnn resnet':'faster_rcnn_resnet50_coco_2018_01_28'
 }
-
-#Initialize empty dataframe to record results
-res_df = pd.DataFrame(columns=['boxes', 'classes','scores','num_detections'])
-
 MODEL_NAME = modelname[args.model]
-
 # Path to frozen detection graph. This is the actual model that is used for the object detection.
 PATH_TO_CKPT = 'models/'+ MODEL_NAME + '/frozen_inference_graph.pb'
-
 # List of the strings that is used to add correct label for each box.
 PATH_TO_LABELS = os.path.join('data', 'mscoco_label_map.pbtxt')
-
 # Number of classes to detect
 NUM_CLASSES = 90
 
+#----------------HUMAN COUNTER-----------------
+humancounter = 0
+centoroid = []
 
 # Load a (frozen) Tensorflow model into memory.
 detection_graph = tf.Graph()
@@ -83,6 +89,7 @@ with detection_graph.as_default():
             # Read frame from camera
             start_time = time.time()
             ret, image_np = cap.read()
+            w, h, _ = image_np.shape
             # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
             image_np_expanded = np.expand_dims(image_np, axis=0)
             # Extract image tensor
@@ -100,10 +107,11 @@ with detection_graph.as_default():
             (boxes, scores, classes, num_detections) = sess.run(
                 [boxes, scores, classes, num_detections],
                 feed_dict={image_tensor: image_np_expanded})
+            #Boxes -> ymin, xmin, ymax, xmax
             #Record results
             res_df = res_df.append({'boxes':boxes,'scores':scores,'classes':classes,'num_detections':num_detections}, ignore_index = True)
             # Visualization of the results of a detection.
-            vis_util.visualize_boxes_and_labels_on_image_array(
+            image_np, centro = vis_util.visualize_boxes_and_labels_on_image_array(
                 image_np,
                 np.squeeze(boxes),
                 np.squeeze(classes).astype(np.int32),
@@ -111,15 +119,17 @@ with detection_graph.as_default():
                 category_index,
                 use_normalized_coordinates=True,
                 line_thickness=8)
-
+            
+            centoroid.append(centro)
             print('------ {:f} seconds ------'.format(time.time() - start_time))
             # Display output
-            cv2.imshow('object detection', cv2.resize(image_np, (800, 600)))
+            cv2.imshow('object detection', cv2.resize(image_np, (target_w, target_h)))
 
             if cv2.waitKey(25) & 0xFF == ord('q'):
                 cv2.destroyAllWindows()
                 break
 
 #Store log
-if agrs.save_bool not 'True':
+if args.save_bool:
     res_df.to_csv('log.csv',index = True, header = True)
+print(centoroid)

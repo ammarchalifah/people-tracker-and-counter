@@ -127,6 +127,39 @@ def encode_image_array_as_png_str(image):
   output.close()
   return png_string
 
+def draw_point_on_image_array(image, ymin, xmin, ymax, xmax, color='red', radius = 2, thickness = 7, use_normalized_coordinates = True):
+  """Adds points to an image (numpy array).
+
+  Points can be specified in either absolute (pixel) or normalized
+  coordinates.
+
+  Args:
+    image: a numpy array with shape [height, width, 3].
+    ymin: ymin of bounding box.
+    xmin: xmin of bounding box.
+    ymax: ymax of bounding box.
+    xmax: xmax of bounding box.
+    color: color to draw the point
+    radius: radius of the point.
+    thickness: thickness of the point.
+    use_normalized_coordinates: if True, treat coordinates as relative to
+    the image."""
+  image_pil = Image.fromarray(np.uint8(image)).convert('RGB')
+  draw_point_on_image(image_pil, ymin, xmin, ymax, xmax, color, thickness, use_normalized_coordinates)
+  np.copyto(image, np.array(image_pil))
+
+def draw_point_on_image(image, ymin, xmin, ymax, xmax, color = 'red', thickness = 7, use_normalized_coordinates = True):
+  """Same with draw_point_on_image_array, but on image"""
+  draw = ImageDraw.Draw(image)
+  im_width, im_height = image.size
+  if use_normalized_coordinates:
+    (center_x, center_y) = ((xmax + xmin) * im_width/2, (ymax + ymin) * im_height/2)
+  else:
+    (center_x, center_y) = ((xmax + xmin)/2, (ymax + ymin)/2)
+  draw.ellipse((center_x - thickness, center_y - thickness, center_x + thickness, center_y + thickness),
+              outline=color,
+              fill=color)
+
 
 def draw_bounding_box_on_image_array(image,
                                      ymin,
@@ -161,6 +194,7 @@ def draw_bounding_box_on_image_array(image,
                              thickness, display_str_list,
                              use_normalized_coordinates)
   np.copyto(image, np.array(image_pil))
+
 
 
 def draw_bounding_box_on_image(image,
@@ -1015,6 +1049,8 @@ def visualize_boxes_and_labels_on_image_array(
   box_to_keypoints_map = collections.defaultdict(list)
   box_to_keypoint_scores_map = collections.defaultdict(list)
   box_to_track_ids_map = {}
+  #----CENTOROID VARIABLE (2020/07/21)-----
+  centoroid = []
   if not max_boxes_to_draw:
     max_boxes_to_draw = boxes.shape[0]
   for i in range(boxes.shape[0]):
@@ -1090,6 +1126,15 @@ def visualize_boxes_and_labels_on_image_array(
         thickness=0 if skip_boxes else line_thickness,
         display_str_list=box_to_display_str_map[box],
         use_normalized_coordinates=use_normalized_coordinates)
+    draw_point_on_image_array(
+        image,
+        ymin,
+        xmin,
+        ymax,
+        xmax,
+        color = color,
+        use_normalized_coordinates=use_normalized_coordinates)
+    centoroid.append(((xmax+xmin)/2, (ymax+ymin)/2))
     if keypoints is not None:
       keypoint_scores_for_box = None
       if box_to_keypoint_scores_map:
@@ -1106,7 +1151,7 @@ def visualize_boxes_and_labels_on_image_array(
           keypoint_edge_color=color,
           keypoint_edge_width=line_thickness // 2)
 
-  return image
+  return image, centoroid
 
 
 def add_cdf_image_summary(values, name):
