@@ -17,7 +17,7 @@ from matplotlib import pyplot as plt
 from PIL import Image
 from functions import label_map_util
 from functions import visualization_utils as vis_util
-from functions.tracker import box_to_centoroid, boxes_to_centoroid_2
+from functions.tracker import box_to_centoroid, boxes_to_centoroid_2, tracker_initializer, tracker_updater
 
 parser = argparse.ArgumentParser()
 
@@ -30,7 +30,7 @@ args = parser.parse_args()
 
 #------------VIDEO STREAM--------------
 # Define the video stream
-cap = cv2.VideoCapture(args.input_path)  # Change only if you have more than one webcams
+cap = cv2.VideoCapture(0)  # Change only if you have more than one webcams
 #Target size
 target_w = 800
 target_h = 600
@@ -56,7 +56,9 @@ NUM_CLASSES = 90
 
 #----------------HUMAN COUNTER-----------------
 humancounter = 0
+max_count = 0
 centoroid = []
+first_detection = True
 
 # Load a (frozen) Tensorflow model into memory.
 detection_graph = tf.Graph()
@@ -91,9 +93,9 @@ with detection_graph.as_default():
             start_time = time.time()
             ret, image_np = cap.read()
             w, h, _ = image_np.shape
+            # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
+            image_np_expanded = np.expand_dims(image_np, axis=0)
             if framecount % int(args.skip_frame) == 0:
-                # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
-                image_np_expanded = np.expand_dims(image_np, axis=0)
                 # Extract image tensor
                 image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
                 # Extract detection boxes
@@ -111,18 +113,29 @@ with detection_graph.as_default():
                     feed_dict={image_tensor: image_np_expanded})
                 #Boxes -> ymin, xmin, ymax, xmax
                 #Record results
+                centroid = boxes_to_centoroid_2(np.squeeze(boxes),np.squeeze(classes).astype(np.int32), np.squeeze(scores), category_index)
+                if first_detection:
+                    track_id, max_count = tracker_initializer(centroid, np.squeeze(scores), np.squeeze(classes).astype(np.int32), category_index)
+                    prev_centroid = centroid
+                    first_detection = False
+                else:
+                    #Update track_id
+                    track_id, max_count = tracker_updater(centroid, np.squeeze(scores), np.squeeze(classes).astype(np.int32), category_index, max_counter=max_count, prev_centroid=prev_centroid, prev_track_id=track_id)
+                    prev_centroid = centroid
                 res_df = res_df.append({'boxes':boxes,'scores':scores,'classes':classes,'num_detections':num_detections}, ignore_index = True)
-                # Visualization of the results of a detection.
-                image_np = vis_util.visualize_boxes_and_labels_on_image_array(
-                    image_np,
-                    np.squeeze(boxes),
-                    np.squeeze(classes).astype(np.int32),
-                    np.squeeze(scores),
-                    category_index,
-                    use_normalized_coordinates=True,
-                    line_thickness=8)
                 centoroid.append(boxes_to_centoroid_2(np.squeeze(boxes),np.squeeze(classes).astype(np.int32), np.squeeze(scores), category_index))
             
+            # Visualization of the results of a detection.
+            if not first_detection:
+                image_np = vis_util.visualize_boxes_and_labels_on_image_array(
+                        image_np,
+                        np.squeeze(boxes),
+                        np.squeeze(classes).astype(np.int32),
+                        np.squeeze(scores),
+                        category_index,
+                        use_normalized_coordinates=True,
+                        line_thickness=8,
+                        track_ids= np.array(track_id))
             print('------ {:f} seconds ------'.format(time.time() - start_time))
             # Display output
             cv2.imshow('object detection', cv2.resize(image_np, (target_w, target_h)))
@@ -136,5 +149,3 @@ with detection_graph.as_default():
 #Store log
 if args.save_bool:
     res_df.to_csv('log.csv',index = True, header = True)
-print('Centoroid for all objects:')
-print(centoroid)
