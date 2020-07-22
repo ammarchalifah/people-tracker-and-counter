@@ -989,7 +989,8 @@ def visualize_boxes_and_labels_on_image_array(
     skip_boxes=False,
     skip_scores=False,
     skip_labels=False,
-    skip_track_ids=False):
+    skip_track_ids=False,
+    class_to_draw = ['person']):
   """Overlay labeled boxes on an image with formatted scores and label names.
 
   This function groups boxes that correspond to the same location
@@ -1049,8 +1050,6 @@ def visualize_boxes_and_labels_on_image_array(
   box_to_keypoints_map = collections.defaultdict(list)
   box_to_keypoint_scores_map = collections.defaultdict(list)
   box_to_track_ids_map = {}
-  #----CENTOROID VARIABLE (2020/07/21)-----
-  centoroid = []
   if not max_boxes_to_draw:
     max_boxes_to_draw = boxes.shape[0]
   for i in range(boxes.shape[0]):
@@ -1058,6 +1057,9 @@ def visualize_boxes_and_labels_on_image_array(
       break
     if scores is None or scores[i] > min_score_thresh:
       box = tuple(boxes[i].tolist())
+      #Skip classes other than classes of interest
+      if category_index[classes[i]]['name'] not in class_to_draw:
+        continue
       if instance_masks is not None:
         box_to_instance_masks_map[box] = instance_masks[i]
       if instance_boundaries is not None:
@@ -1134,7 +1136,6 @@ def visualize_boxes_and_labels_on_image_array(
         xmax,
         color = color,
         use_normalized_coordinates=use_normalized_coordinates)
-    centoroid.append(((xmax+xmin)/2, (ymax+ymin)/2))
     if keypoints is not None:
       keypoint_scores_for_box = None
       if box_to_keypoint_scores_map:
@@ -1151,7 +1152,7 @@ def visualize_boxes_and_labels_on_image_array(
           keypoint_edge_color=color,
           keypoint_edge_width=line_thickness // 2)
 
-  return image, centoroid
+  return image
 
 
 def add_cdf_image_summary(values, name):

@@ -17,13 +17,14 @@ from matplotlib import pyplot as plt
 from PIL import Image
 from functions import label_map_util
 from functions import visualization_utils as vis_util
-from functions.tracker import box_to_centoroid
+from functions.tracker import box_to_centoroid, boxes_to_centoroid_2
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('-m', '--model', default = 'ssd mobilenet', help = 'Model name to be used. Choose between [ssd inception, ssd mobilenet, faster rcnn resnet]')
 parser.add_argument('-i', '--input_path', default = 'videos/lobbyselatan.avi', help ='path of file')
 parser.add_argument('-s', '--save_bool', default = False, help = 'log detection data to a csv file.')
+parser.add_argument('-f', '--skip_frame', default = 30, help='number of frames skipped for each detection')
 
 args = parser.parse_args()
 
@@ -81,7 +82,7 @@ def load_image_into_numpy_array(image):
     return np.array(image.getdata()).reshape(
         (im_height, im_width, 3)).astype(np.uint8)
 
-
+framecount = 1
 # Detection
 with detection_graph.as_default():
     with tf.compat.v1.Session(graph=detection_graph) as sess:
@@ -90,40 +91,43 @@ with detection_graph.as_default():
             start_time = time.time()
             ret, image_np = cap.read()
             w, h, _ = image_np.shape
-            # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
-            image_np_expanded = np.expand_dims(image_np, axis=0)
-            # Extract image tensor
-            image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
-            # Extract detection boxes
-            boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
-            # Extract detection scores
-            scores = detection_graph.get_tensor_by_name('detection_scores:0')
-            # Extract detection classes
-            classes = detection_graph.get_tensor_by_name('detection_classes:0')
-            # Extract number of detectionsd
-            num_detections = detection_graph.get_tensor_by_name(
-                'num_detections:0')
-            # Actual detection.
-            (boxes, scores, classes, num_detections) = sess.run(
-                [boxes, scores, classes, num_detections],
-                feed_dict={image_tensor: image_np_expanded})
-            #Boxes -> ymin, xmin, ymax, xmax
-            #Record results
-            res_df = res_df.append({'boxes':boxes,'scores':scores,'classes':classes,'num_detections':num_detections}, ignore_index = True)
-            # Visualization of the results of a detection.
-            image_np, centro = vis_util.visualize_boxes_and_labels_on_image_array(
-                image_np,
-                np.squeeze(boxes),
-                np.squeeze(classes).astype(np.int32),
-                np.squeeze(scores),
-                category_index,
-                use_normalized_coordinates=True,
-                line_thickness=8)
+            if framecount % int(args.skip_frame) == 0:
+                # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
+                image_np_expanded = np.expand_dims(image_np, axis=0)
+                # Extract image tensor
+                image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
+                # Extract detection boxes
+                boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
+                # Extract detection scores
+                scores = detection_graph.get_tensor_by_name('detection_scores:0')
+                # Extract detection classes
+                classes = detection_graph.get_tensor_by_name('detection_classes:0')
+                # Extract number of detectionsd
+                num_detections = detection_graph.get_tensor_by_name(
+                    'num_detections:0')
+                # Actual detection.
+                (boxes, scores, classes, num_detections) = sess.run(
+                    [boxes, scores, classes, num_detections],
+                    feed_dict={image_tensor: image_np_expanded})
+                #Boxes -> ymin, xmin, ymax, xmax
+                #Record results
+                res_df = res_df.append({'boxes':boxes,'scores':scores,'classes':classes,'num_detections':num_detections}, ignore_index = True)
+                # Visualization of the results of a detection.
+                image_np = vis_util.visualize_boxes_and_labels_on_image_array(
+                    image_np,
+                    np.squeeze(boxes),
+                    np.squeeze(classes).astype(np.int32),
+                    np.squeeze(scores),
+                    category_index,
+                    use_normalized_coordinates=True,
+                    line_thickness=8)
+                centoroid.append(boxes_to_centoroid_2(np.squeeze(boxes),np.squeeze(classes).astype(np.int32), np.squeeze(scores), category_index))
             
-            centoroid.append(centro)
             print('------ {:f} seconds ------'.format(time.time() - start_time))
             # Display output
             cv2.imshow('object detection', cv2.resize(image_np, (target_w, target_h)))
+            #Frame count update
+            framecount += 1
 
             if cv2.waitKey(25) & 0xFF == ord('q'):
                 cv2.destroyAllWindows()
@@ -132,4 +136,5 @@ with detection_graph.as_default():
 #Store log
 if args.save_bool:
     res_df.to_csv('log.csv',index = True, header = True)
+print('Centoroid for all objects:')
 print(centoroid)
