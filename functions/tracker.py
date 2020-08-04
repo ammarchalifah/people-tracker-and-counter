@@ -63,9 +63,9 @@ def tracker_updater(centroids, scores, classes, category_index, max_counter, pre
     cols = distance.min(axis = 0).argsort()
     rows = distance.argmin(axis = 0)[cols]
     #------flags------
-    print(len(cols))
-    print(len(rows))
-    print(distance.shape)
+    #print(len(cols))
+    #print(len(rows))
+    #print(distance.shape)
     #-----flags---------
     same_index = []
     for idx in range(len(index_prev_track)):

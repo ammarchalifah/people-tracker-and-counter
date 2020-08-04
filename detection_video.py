@@ -30,7 +30,10 @@ args = parser.parse_args()
 
 #------------VIDEO STREAM--------------
 # Define the video stream
-cap = cv2.VideoCapture(0)  # Change only if you have more than one webcams
+if args.input_path == '0' or args.input_path == 'webcam':
+    cap = cv2.VideoCapture(0) 
+else:
+    cap = cv2.VideoCapture(args.input_path)  # Change only if you have more than one webcams
 #Target size
 target_w = 800
 target_h = 600
