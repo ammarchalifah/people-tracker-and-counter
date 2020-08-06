@@ -21,11 +21,15 @@ from __future__ import print_function
 import collections
 import logging
 
+print('importing label_map_util')
 import numpy as np
 from six import string_types
 from six.moves import range
+print('loading tensorflow.compat.v1 in label_map_util...')
 import tensorflow.compat.v1 as tf
+print('tensorflow loaded.')
 from google.protobuf import text_format
+
 from functions import string_int_label_map_pb2
 
 _LABEL_OFFSET = 1
