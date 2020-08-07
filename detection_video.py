@@ -34,6 +34,7 @@ print('[INFO] model builder loaded')
 
 print('[INFO] importing tensorflow...')
 import tensorflow as tf
+from tensorflow.keras.models import load_model
 print('[INFO] tensorflow imported')
 
 tf.get_logger().setLevel('ERROR')
@@ -134,13 +135,21 @@ womanDown = 0
 manUp = 0
 manDown = 0
 
-#Model Loading
+# Model Loading
+print('[INFO] loading detection model ...')
 configs = config_util.get_configs_from_pipeline_file(PATH_TO_CFG)
 model_config = configs['model']
 detection_model = model_builder.build(model_config=model_config, is_training = False)
 
 ckpt = tf.compat.v2.train.Checkpoint(model = detection_model)
 ckpt.restore(os.path.join(PATH_TO_CKPT, 'ckpt-0')).expect_partial()
+print('[INFO] detection model loaded')
+
+# Gender Model Loading
+print('[INFO] loading gender classifier model...')
+gender_model = load_model('models/model.h5')
+g_classes = ['woman', 'man']
+print('[INFO] gender classifier model loaded')
 
 @tf.function
 def detect_fn(image):
@@ -162,8 +171,6 @@ with detection_graph.as_default():
         od_graph_def.ParseFromString(serialized_graph)
         tf.import_graph_def(od_graph_def, name='')
 """
-
-print('[INFO] loading model ...')
 # Detection
 while True:
     #Initialize start time to count time elapsed for each frame.
@@ -235,13 +242,27 @@ while True:
 
             cX = int((xmin + xmax) / 2.0)
             cY = int((ymin + ymax) / 2.0)
-            centroCoordDict[(cX, cY)] = (xmin, ymin, xmax, ymax)
             
             tracker = dlib.correlation_tracker()
             rect = dlib.rectangle(xmin, ymin, xmax, ymax)
             tracker.start_track(rgb, rect)
 
             trackers.append(tracker)
+
+            g_image = image_np[ymin:ymax, xmin:xmax]
+            g_image = cv2.cvtColor(g_image, cv2.COLOR_BGR2GRAY)
+            g_image = g_image.astype('float')/255.0
+            g_image = np.expand_dims(g_image, axis = 0)
+            g_image = np.expand_dims(g_image, axis =-1)
+
+            if g_image is None:
+                gender = 'undetected'
+            else:
+                confidence = gender_model.predict(g_image)[0]
+                g_idx = np.argmax(confidence)
+                gender = g_classes[g_idx]
+
+            centroCoordDict[(cX, cY)] = (xmin, ymin, xmax, ymax, gender)
     else:
         for tracker in trackers:
             status = 'tracking'
@@ -254,9 +275,22 @@ while True:
             xmax = int(pos.right())
             ymax = int(pos.bottom())
 
+            g_image = image_np[ymin:ymax, xmin:xmax]
+            g_image = cv2.cvtColor(g_image, cv2.COLOR_BGR2GRAY)
+            g_image = g_image.astype('float')/255.0
+            g_image = np.expand_dims(g_image, axis = 0)
+            g_image = np.expand_dims(g_image, axis =-1)
+
+            if g_image is None:
+                gender = 'undetected'
+            else:
+                confidence = gender_model.predict(g_image)[0]
+                g_idx = np.argmax(confidence)
+                gender = g_classes[g_idx]
+
             cX = int((xmin + xmax) / 2.0)
             cY = int((ymin + ymax) / 2.0)
-            centroCoordDict[(cX, cY)] = (xmin, ymin, xmax, ymax)
+            centroCoordDict[(cX, cY)] = (xmin, ymin, xmax, ymax, gender)
 
             rects.append((xmin, ymin, xmax, ymax))
     
@@ -292,16 +326,16 @@ while True:
             # masukkan fungsi prediksi gender di sini
             # dengan masukan frame dan bounding box
             # yang bisa diakses dari dict centroid -> koordinat
-            gender = 1
-            go = GenderObject(objectID, gender)
-            go.determine_gender()
+            if centroCoordDict[(centroid[0], centroid[1])][4] is not 'undetected':
+                go = GenderObject(objectID, centroCoordDict[(centroid[0], centroid[1])][4])
+                go.determine_gender()
         elif len(go.genders) < 3:
             # masukkan fungsi prediksi gender di sini
             # dengan masukan frame dan bounding box
             # yang bisa diakses dari dict centroid -> koordinat
-            gender = 1
-            go.genders.append(gender)
-            go.determine_gender()
+            if centroCoordDict[(centroid[0], centroid[1])][4] is not 'undetected':
+                go.genders.append(centroCoordDict[(centroid[0], centroid[1])][4])
+                go.determine_gender()
 
         genderObjects[objectID] = go
 
@@ -315,14 +349,14 @@ while True:
             if not to.counted:
                 if direction < -(H/5):
                     totalUp += 1
-                    if go.gender == 1:
+                    if go.gender == 'man':
                         manUp += 1
                     else:
                         womanUp += 1
                     to.counted = True
                 elif direction > H/5:
                     totalDown += 1
-                    if go.gender == 1:
+                    if go.gender == 'man':
                         manDown += 1
                     else:
                         womanDown += 1
