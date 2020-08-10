@@ -11,18 +11,6 @@ class TrackableObject:
 		# already been counted or not
 		self.counted = False
 
-class HeightObject:
-	def __init__(self, objectID, height):
-		# store the object ID, then initialize a list of heights
-		self.objectID = objectID
-		self.heights = [height]
-
-		self.height = None
-
-	def determine_height(self):
-		#update the height with mean value
-		self.height = sum(self.heights)/len(self.heights)
-
 class GenderObject:
 	def __init__(self, objectID, gender):
 		# store object ID, then initialize a list of gender

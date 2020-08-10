@@ -1,26 +1,31 @@
-# People counter (CCTV)
+# People and Gender Counter (CCTV)
 # Ammar Chalifah (July 2020)
+#
+# Created as an educative project
+# at Bisa AI x Institut Teknologi Bandung (Indonesia)
 
-
+# Libraries
 import numpy as np
 import cv2
-print('[INFO] cv2 imported')
+print('[INFO] cv2 imported. cv2 version: {}'.format(cv2.__version__))
 import pandas as pd
 import dlib
-print('[INFO] dlib imported')
+print('[INFO] dlib imported. dlib version: {}'.format(dlib.__version__))
 import imutils
-print('[INFO] imutils imported')
-from matplotlib import pyplot as plt
+print('[INFO] imutils imported. imutils version: {}'.format(imutils.__version__))
 
+from matplotlib import pyplot as plt
+import csv
 import time
 import argparse
 import math
 import os
-print('[INFO] time, argparse, math, os imported')
+import datetime
+print('[INFO] supporting libraries imported.')
 
 from functions.centroidtracker import CentroidTracker
 print('[INFO] functions/centroidtracker imported')
-from functions.trackableobject import TrackableObject, HeightObject, GenderObject
+from functions.trackableobject import TrackableObject, GenderObject
 print('[INFO] functions/trackableobject imported')
 
 from functions import config_util
@@ -35,9 +40,12 @@ print('[INFO] model builder loaded')
 print('[INFO] importing tensorflow...')
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-print('[INFO] tensorflow imported')
+print('[INFO] tensorflow imported. tensorflow version: {}'.format(tf.__version__))
 
 tf.get_logger().setLevel('ERROR')
+
+# Parser
+# Specify all the parameters needed by the end user in order to get desirable outcome.
 
 parser = argparse.ArgumentParser()
 
@@ -47,18 +55,32 @@ parser.add_argument('-f', '--skip_frame', default = 30, help='number of frames s
 parser.add_argument('-c', '--classes_to_detect', default = ['person'], help = 'classes name to detect')
 parser.add_argument('-d', '--distance_threshold', default = 70, help = 'maximum distance of object displacement to be considered as one object')
 parser.add_argument('-l', '--longest_disappear', default = 15, help = 'maximum number of frames the object disappeared')
-parser.add_argument('-g', '--log', default = 'No', help = 'Save the log?')
+parser.add_argument('-g', '--log', default = True, help = 'Save the log?')
 parser.add_argument('-o', '--output', default = 'output.avi', help ='path to written video file')
 
 args = parser.parse_args()
 
-# ------------HELPER CODE------------------
+# -----------
+# HELPER CODE
+# -----------
 def load_image_into_numpy_array(image):
+    """Function to convert image into numpy array"""
     (im_width, im_height) = image.size
     return np.array(image.getdata()).reshape(
         (im_height, im_width, 3)).astype(np.uint8)
 
 def clean_detection_result(boxes, classes, scores, classes_to_detect, threshold = 0.5):
+    """
+    Function to remove all prediction results that are not included in classes_to_detect.
+    In default, this function will remove all predictions other than 'person' type.
+
+    Args:
+        boxes, classes, scores -> detection from TF2 Object Detection Model.
+        classes_to_detect -> list of strings. default: ['person']
+        threshold -> minimum score
+    Returns:
+        new_boxes, new_classes, new_scores -> numpy array of cleaned prediction result.
+    """
     new_boxes = []
     new_classes = []
     new_scores = []
@@ -69,7 +91,6 @@ def clean_detection_result(boxes, classes, scores, classes_to_detect, threshold 
             new_scores.append(scores[i])
     return np.asarray(new_boxes), np.asarray(new_classes), np.asarray(new_scores)
 
-
 #------------VIDEO STREAM--------------
 # Define the video stream
 print('[INFO] creating video capture ...')
@@ -78,6 +99,8 @@ if args.input_path == '0' or args.input_path == 'webcam':
 else:
     cap = cv2.VideoCapture(args.input_path)  # Change only if you have more than one webcams 
 
+fps = cap.get(cv2.CAP_PROP_FPS)
+
 #Target size of the video stream
 font = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -85,13 +108,11 @@ writer = None
 W = None
 H = None
 
-#Initialize empty dataframe to record results
-#------------LOGGING VARIABLE----------------
-if args.log is not 'No':
-    res_df = pd.DataFrame(columns=['boxes', 'classes','scores','num_detections'])
-
-#Model choosing
-#------------DETECTION MODEL-----------------
+# Model choosing
+# -----------DETECTION MODEL-----------------
+# Note for user:
+# Please modify this variable if you use another model.
+# Make sure to download the model from TensorFlow 2 Object Detection Model Zoo.
 modelname = {
     'ssd mobilenet':'ssd_mobilenet_v2_fpnlite_320x320_coco17_tpu-8',
     'centernet':'centernet_hg104_1024x1024_kpts_coco17_tpu-32',
@@ -118,12 +139,10 @@ first_detection = True
 # Label maps map indices to category names, so that when our convolution network predicts `5`, we know that this corresponds to `airplane`.  Here we use internal utility functions, but anything that returns a dictionary mapping integers to appropriate string labels would be fine
 category_index = label_map_util.create_category_index_from_labelmap(PATH_TO_LABELS, use_display_name=True)
 
-
 #Object Tracking Helper Code
 ct = CentroidTracker(maxDisappeared=args.longest_disappear, maxDistance=args.distance_threshold)
 trackers = []
 trackableObjects = {}
-heightObjects = {}
 genderObjects = {}
 
 framecount = 0
@@ -145,7 +164,17 @@ ckpt = tf.compat.v2.train.Checkpoint(model = detection_model)
 ckpt.restore(os.path.join(PATH_TO_CKPT, 'ckpt-0')).expect_partial()
 print('[INFO] detection model loaded')
 
+# Logger
+if args.log:
+    log_fields = ['timestamp', 'video time', 'track information', 'total up', 'man up', 'woman up', 'total down', 'man down', 'woman down']
+    with open('log.csv', 'w') as f:
+        log_writer = csv.writer(f)
+        log_writer.writerow(log_fields)
+
 # Gender Model Loading
+# Feel free to use any gender classification model in h5 format
+# The output of the prediction an array with length 2, each of them represents the confidence of
+# 'woman' and 'man' class
 print('[INFO] loading gender classifier model...')
 gender_model = load_model('models/model.h5')
 g_classes = ['woman', 'man']
@@ -161,16 +190,6 @@ def detect_fn(image):
 
     return detections, prediction_dict, tf.reshape(shapes, [-1])
 
-# Load a (frozen) Tensorflow model into memory.
-"""
-detection_graph = tf.Graph()
-with detection_graph.as_default():
-    od_graph_def = tf.compat.v1.GraphDef()
-    with tf.io.gfile.GFile(PATH_TO_CKPT, 'rb') as fid:
-        serialized_graph = fid.read()
-        od_graph_def.ParseFromString(serialized_graph)
-        tf.import_graph_def(od_graph_def, name='')
-"""
 # Detection
 while True:
     #Initialize start time to count time elapsed for each frame.
@@ -186,7 +205,6 @@ while True:
 
     rgb = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
 
-    #Video Writer
     if args.output is not None and writer is None:
         fourcc = cv2.VideoWriter_fourcc(*"MJPG")
         writer = cv2.VideoWriter(args.output, fourcc, 30, (W, H), True)
@@ -207,35 +225,14 @@ while True:
 
         label_id_offset = 1
 
-
-
-        """
-        # Extract image tensor
-        image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
-        # Extract detection boxes
-        boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
-        # Extract detection scores
-        scores = detection_graph.get_tensor_by_name('detection_scores:0')
-        # Extract detection classes
-        classes = detection_graph.get_tensor_by_name('detection_classes:0')
-        # Extract number of detectionsd
-        num_detections = detection_graph.get_tensor_by_name(
-            'num_detections:0')
-        # Actual detection.
-        (boxes, scores, classes, num_detections) = sess.run(
-            [boxes, scores, classes, num_detections],
-            feed_dict={image_tensor: image_np_expanded})
-        #Boxes -> ymin, xmin, ymax, xmax
-        """
-
         boxes = detections['detection_boxes'][0].numpy()
         classes = (detections['detection_classes'][0].numpy() + label_id_offset).astype(int)
         scores = detections['detection_scores'][0].numpy()
 
-        #Remove all results that are not a member of [classes_to_detect] and has score lower than 50%
+        # Remove all results that are not a member of [classes_to_detect] and has score lower than 50%
         boxes, classes, scores = clean_detection_result(boxes, classes, scores, args.classes_to_detect, threshold = 0.5)
 
-        #Bounding boxes
+        # Bounding boxes
         for box in boxes:
             box = box*np.array([H, W, H, W])
             ymin, xmin, ymax, xmax = box.astype('int')
@@ -298,29 +295,14 @@ while True:
     # with the newly computer object centroids
     objects = ct.update(rects)
 
+    # CSV Logger
+    log_track = []
+
     for (objectID, centroid) in objects.items():
         
         # check to see if a trackable object exists for the current object ID
-        ho = heightObjects.get(objectID, None)
         go = genderObjects.get(objectID, None)
         to = trackableObjects.get(objectID, None)
-
-        if ho is None:
-            # masukkan fungsi prediksi tinggi
-            # dengan input koordinat dari dict yang bisa diakses dari centroid
-            # dan parameter ruangan
-            tinggi = 0 # masukkan fungsinya di sini
-            ho = HeightObject(objectID, tinggi)
-            ho.determine_height()
-        elif len(ho.heights) < 3:
-            # masukkan fungsi prediksi tinggi
-            # dengan input koordinat dari dict yang bisa diakses dari centroid
-            # dan parameter ruangan
-            tinggi = 0
-            ho.heights.append(tinggi)
-            ho.determine_height()
-        
-        heightObjects[objectID] = ho
 
         if go is None:
             # masukkan fungsi prediksi gender di sini
@@ -364,14 +346,14 @@ while True:
         
         trackableObjects[objectID] = to
 
+        log_track.append({'ID':objectID, 'location': centroid, 'gender': go.gender})
+
         #CREATE TUPLE FOR LOG with format (ID, centroid, height, gender)
 
         #Centroid display
         text = "ID {}".format(objectID)
         image_np = cv2.putText(image_np, text, (centroid[0] - 10, centroid[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         image_np = cv2.circle(image_np, (centroid[0], centroid[1]), 4, (0, 255, 0), -1)
-    
-    #LOG HERE
 
     #Counter display
     info = [
@@ -394,22 +376,32 @@ while True:
             cv2.FONT_HERSHEY_SIMPLEX, 0.3, (0, 0, 255), 1)
     
     if writer is not None:
-        #writer.write(image_np)
-        pass
+        writer.write(image_np)
+    
+    # Timestamp
+    timeDiff = time.time() - start_time
+    print('------ {:f} seconds ------'.format(timeDiff))
+    if (timeDiff < 1.0/(fps)): time.sleep(1.0/(fps) - timeDiff)
 
-    print('------ {:f} seconds ------'.format(time.time() - start_time))
+    # Logger 
+    if args.log:
+        log_time = datetime.datetime.now().strftime("%H:%M:%S")
+        log_vidtime = datetime.timedelta(seconds = framecount/fps)
+
+        log_fields = [log_time, log_vidtime, log_track, totalUp, manUp, womanUp, totalDown, manDown, womanDown]
+
+        with open('log.csv', 'a') as f:
+            log_writer = csv.writer(f)
+            log_writer.writerow(log_fields)
+
     # Display output
     cv2.imshow('object detection', image_np)
-    #Frame count update
+    # Frame count update
     framecount += 1
 
     if cv2.waitKey(25) & 0xFF == ord('q'):
         cv2.destroyAllWindows()
         break
-
-#Store log
-if args.log is not 'No':
-    res_df.to_csv('log.csv',index = True, header = True)
 
 if writer is not None:
     writer.release()
