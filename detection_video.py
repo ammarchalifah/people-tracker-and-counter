@@ -56,7 +56,7 @@ parser.add_argument('-c', '--classes_to_detect', default = ['person'], help = 'c
 parser.add_argument('-d', '--distance_threshold', default = 70, help = 'maximum distance of object displacement to be considered as one object')
 parser.add_argument('-l', '--longest_disappear', default = 15, help = 'maximum number of frames the object disappeared')
 parser.add_argument('-g', '--log', default = True, help = 'Save the log?')
-parser.add_argument('-o', '--output', default = 'output.avi', help ='path to written video file')
+parser.add_argument('-o', '--output', default = 'videos/output.avi', help ='path to written video file')
 
 args = parser.parse_args()
 
