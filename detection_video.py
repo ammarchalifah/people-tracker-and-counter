@@ -50,8 +50,8 @@ tf.get_logger().setLevel('ERROR')
 parser = argparse.ArgumentParser()
 
 parser.add_argument('-m', '--model', default = 'efficientdet', help = 'Model name to be used. Choose between [ssd inception, ssd mobilenet, faster rcnn resnet]')
-parser.add_argument('-i', '--input_path', default = 'videos/lobbyselatan.avi', help ='path of file')
-parser.add_argument('-f', '--skip_frame', default = 30, help='number of frames skipped for each detection')
+parser.add_argument('-i', '--input_path', default = 'videos/WalkByShop1cor.mpg', help ='path of file')
+parser.add_argument('-f', '--skip_frame', default = 20, help='number of frames skipped for each detection')
 parser.add_argument('-c', '--classes_to_detect', default = ['person'], help = 'classes name to detect')
 parser.add_argument('-d', '--distance_threshold', default = 70, help = 'maximum distance of object displacement to be considered as one object')
 parser.add_argument('-l', '--longest_disappear', default = 15, help = 'maximum number of frames the object disappeared')
@@ -357,8 +357,8 @@ while True:
 
     #Counter display
     info = [
-        ("Keluar", totalUp),
-        ("Masuk", totalDown),
+        ("Up", totalUp),
+        ("Down", totalDown),
         ("Status", status),
     ]
 
@@ -369,7 +369,7 @@ while True:
 
     for (i, (k, v)) in enumerate(info):
         if i < 2:
-            text = "{}: {} (Wanita: {} Pria: {})".format(k, v, infoGender[i][1], infoGender[i][0])
+            text = "{}: {} (Female: {} Male: {})".format(k, v, infoGender[i][1], infoGender[i][0])
         else:
             text = "{}: {}".format(k, v)
         image_np = cv2.putText(image_np, text, (10, H - ((i * 20) + 20)),
